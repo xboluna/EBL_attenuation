@@ -1,3 +1,5 @@
+
+#parses '-sp' argument to save plot rather than display
 import argparse
 parser = argparse.ArgumentParser(description='run analysis on GRB080916C')
 parser.add_argument('-sp',dest='accumulate',action='store_const',const=True,default=False,help='saves plots rather than displaying them')
@@ -168,7 +170,7 @@ if __name__ == "__main__":
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
-    if args.accumulate = True:
+    if args.accumulate == True:
         plt.savefig('GRB080916C.png')
     else:
         plt.show()
