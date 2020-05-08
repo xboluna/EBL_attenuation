@@ -1,13 +1,26 @@
+import argparse
+parser = argparse.ArgumentParser(description='run analysis on GRB080916C')
+parser.add_argument('-sp',dest='accumulate',action='store_const',const=True,default=False,help='saves plots rather than displaying them')
+args = parser.parse_args()
+if(args.accumulate==True):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    print("Plots will be saved")
+else:
+    import matplotlib.pyplot as plt
+
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 import glob
 import astropy.units as u
 
-# import warnings
-# warnings.filterwarnings("ignore")
+import warnings
+warnings.filterwarnings("ignore")
 
 from threeML import *
+
+
 
 TRIGGER_ID    = "080916009"
 RA            = 119.8
@@ -70,7 +83,7 @@ def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IR
 
 
 def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
-    '''This is an helper funtion to retrieve the LAT data files saved bt the doLAT step '''
+    '''This is an helper funtion to retrieve the LAT data files saved by the doLAT step '''
     directory= '%s/interval%s-%s/' % (fermi_dir, t0, t1)
     print(directory)
     print(os.path.abspath(directory))
@@ -155,4 +168,7 @@ if __name__ == "__main__":
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
-    plt.show()
+    if args.accumulate = True:
+        plt.savefig('GRB080916C.png')
+    else:
+        plt.show()
