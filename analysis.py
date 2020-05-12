@@ -1,10 +1,9 @@
 
-#parses '-sp' argument to save plot rather than display
-import argparse
-parser = argparse.ArgumentParser(description='run analysis on GRB080916C')
-parser.add_argument('-sp',dest='accumulate',action='store_const',const=True,default=False,help='saves plots rather than displaying them')
-args = parser.parse_args()
-if(args.accumulate==True):
+#########
+#Save plots or display them?
+savePlots = True
+
+if(savePlots==True):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -12,28 +11,26 @@ if(args.accumulate==True):
 else:
     import matplotlib.pyplot as plt
 
+##########
+
+#parses argument as GRB to investigate
+import argparse
+parser = argparse.ArgumentParser(description='run analysis on a specified GRB')
+parser.add_argument('grbs',metavar='GRB id',type=str,nargs='+',default='080916009',help='format e.g. 080916009')
+args = parser.parse_args()
+
 import os
 import numpy as np
 import glob
-import astropy.units as u
+import astropy.units as u 
 
 import warnings
 warnings.filterwarnings("ignore")
 
 from threeML import *
 
+catalog = pd.read_csv('EBL_candidates/selectedGRBs.csv')
 
-
-TRIGGER_ID    = "080916009"
-RA            = 119.8
-DEC           = -56.6
-GBM_DATA_PATH = './GRB%s' % TRIGGER_ID
-LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData') # This has to point where the gtburst data directory points.
-FT2 = LAT_DATA_PATH + '/bn%s/gll_ft2_tr_bn%s_v00.fit' % (TRIGGER_ID, TRIGGER_ID)
-
-like=False
-os.system('mkdir -p %s' % GBM_DATA_PATH)
-os.chdir(GBM_DATA_PATH)
 
 def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IRF='p8_transient010e', data_path='./'):
     '''
@@ -154,8 +151,20 @@ def do_LAT_analysis(tstart,tstop,emin,emax,irf='p8_transient010e'):
 
 # ------------------------------------------------------------------------------ #
 
+#takes: trigger ID
+#returns: trigger's RA and DEC from catalog
+#exception: if trigger not found, print and exit
+def findGRB(grb_name):
+    entry = catalog[ catalog['GRBNAME'] == int(i) ]
+    print('found %s matches'%(len(entry)))
+    try:
+        print('Ra %s :: Dec %s'%(entry.iloc[0]['RA'],entry.iloc[0]['DEC']))
+        return entry.iloc[0]['RA'],entry.iloc[0]['DEC']
+    except IndexError:
+        print('grb %i not found'%grb_name)
+        exit()
 
-if __name__ == "__main__":
+def runAnalysis():
     analysis=[]
     tstart = 0.0
     tstop  = 600.0
@@ -170,7 +179,36 @@ if __name__ == "__main__":
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
-    if args.accumulate == True:
+    if savePlots == True:
         plt.savefig(TRIGGER_ID+'.png')
     else:
         plt.show()
+
+
+# ------------------------------------------------------------------------------- #
+
+
+if __name__ == "__main__":
+    
+
+    for i in args.grbs:
+        print("####################################")
+        print("analyzing %s"%i)
+        print("####################################")
+        TRIGGER_ID = i
+        RA, DEC = findGRB(i) #scans catalog for given trigger, returns RA and DEC 
+        GBM_DATA_PATH = './GRB%s' % TRIGGER_ID
+        LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData') # This has to point where the gtburst data directory points.
+        FT2 = LAT_DATA_PATH + '/bn%s/gll_ft2_tr_bn%s_v00.fit' % (TRIGGER_ID, TRIGGER_ID)
+
+        like=False
+        os.system('mkdir -p %s' % GBM_DATA_PATH)
+        os.chdir(GBM_DATA_PATH)
+
+        runAnalysis()
+        print('analysis for %s completed'%i)
+
+    print('analyses complete')
+    #end main
+
+
