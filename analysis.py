@@ -156,15 +156,15 @@ def loadModels(TRIGGER_ID,RA,DEC,REDSHIFT):
     
     #define attenuated spectrum
     spectrum = Powerlaw()
-    source1 = PointSource(TRIGGER_ID,ra=RA,dec=DEC,spectral_shape=spectrum)
-    spectrum.piv = 1. * u.MeV
-    spectrum.K = 1.e-11 / (u.MeV * u.cm**2 * u.2)
+    source1 = PointSource('Mrk421',ra=RA,dec=DEC,spectral_shape=spectrum)#why can't I change source name?
+    spectrum.piv = 1. * u.keV
+    spectrum.K = 1.e-11 / (u.keV * u.cm**2 * u.s)
     spectrum.index = -2.2
     
     #define attenuated spectrum for Dominiguez
     ebl = EBLattenuation()
     spectrumEBL = spectrum*ebl
-    source2 = PointSource(TRIGGER_ID, ra=RA, dec=DEC,spectral_hape=spectrumEBL)
+    source2 = PointSource('Mrk421', ra=RA, dec=DEC,spectral_shape=spectrumEBL)##
     spectrumEBL.redshift_2 = REDSHIFT*u.dimensionless_unscaled
 
     #define attenuation for Gilmore
@@ -181,13 +181,12 @@ def findGRB(grb_name):
     entry = catalog[ catalog['GRBNAME'] == int(i) ]
     print('found %s matches'%(len(entry)))
     try:
-        print('Ra %s :: Dec %s'%(entry.iloc[0]['RA'],entry.iloc[0]['DEC']))
         return entry.iloc[0]['RA'],entry.iloc[0]['DEC'],entry.iloc[0]['REDSHIFT']
     except IndexError:
         print('grb %i not found'%grb_name)
         exit()
 
-def runAnalysis():
+def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     analysis=[]
     tstart = 0.0
     tstop  = 600.0
@@ -203,13 +202,16 @@ def runAnalysis():
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
 
+    """
     #plotting spectrum attenuation models
     spectrum, spectrumEBL = loadModels(TRIGGER_ID, RA, DEC, REDSHIFT)
     energies=np.logspace(emin,emax,100)*u.MeV
+    
+    plt.loglog(energies,spectrum(energies)*(u.erg**2),label="unattenuated")
+    plt.loglog(energies,spectrumEBL(energies)*(u.erg**2),label="Dominiguez attenuated")
+    plt.legend()
     """
-    plt.loglog(energies,spectrum(energies),label="unattenuated")
-    plt.loglog(energies,spectrumEBL(energies),label="Dominiguez attenuated")
-    """
+
 
     if savePlots == True:
         plt.savefig(TRIGGER_ID+'.png')
@@ -229,6 +231,7 @@ if __name__ == "__main__":
         print("####################################")
         TRIGGER_ID = i
         RA, DEC, REDSHIFT = findGRB(i) #scans catalog for given trigger, returns RA and DEC 
+        print("RA: %s   DEC: %s   RS: %s"%(RA,DEC,REDSHIFT))
         GBM_DATA_PATH = './GRB%s' % TRIGGER_ID
         LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData') # This has to point where the gtburst data directory points.
         FT2 = LAT_DATA_PATH + '/bn%s/gll_ft2_tr_bn%s_v00.fit' % (TRIGGER_ID, TRIGGER_ID)
@@ -237,7 +240,7 @@ if __name__ == "__main__":
         os.system('mkdir -p %s' % GBM_DATA_PATH)
         os.chdir(GBM_DATA_PATH)
 
-        runAnalysis()
+        runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT)
         print('analysis for %s completed'%i)
 
     print('analyses complete')
