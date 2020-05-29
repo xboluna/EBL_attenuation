@@ -157,19 +157,23 @@ def loadModels(TRIGGER_ID,RA,DEC,REDSHIFT):
     #define attenuated spectrum
     spectrum = Powerlaw()
     source1 = PointSource('Mrk421',ra=RA,dec=DEC,spectral_shape=spectrum)#why can't I change source name?
-    spectrum.piv = 1. * u.keV
-    spectrum.K = 1.e-11 / (u.keV * u.cm**2 * u.s)
-    spectrum.index = -2.2
+    spectrum.piv = 5.e5 * u.keV 
+    spectrum.K = 4.02e-11 / (u.keV * u.cm**2 * u.s)
+    spectrum.index = -2.21
     
     #define attenuated spectrum for Dominiguez
     ebl = EBLattenuation()
-    spectrumEBL = spectrum*ebl
-    source2 = PointSource('Mrk421', ra=RA, dec=DEC,spectral_shape=spectrumEBL)##
-    spectrumEBL.redshift_2 = REDSHIFT*u.dimensionless_unscaled
-
+    spectrumEBL_Dom = spectrum*ebl
+    spectrumEBL_Dom.redshift_2 = REDSHIFT*u.dimensionless_unscaled
+    source2 = PointSource('Mrk421', ra=RA, dec=DEC,spectral_shape=spectrumEBL_Dom)##
+    
     #define attenuation for Gilmore
+    ebl2 = EBLattenuation().set_ebl_model('gilmore')
+    spectrumEBL_Gil = spectrum*ebl
+    spectrumEBL_Gil.redshift_r = REDSHIFT*u.dimensionless_unscaled
+    source3 = PointSource('Mrk421', ra=RA, dec=DEC, spectral_shape=spectrumEBL_Gil)
 
-    return spectrum,spectrumEBL
+    return spectrum,spectrumEBL_Dom,spectrumEBL_Gil
 
 
 # ------------------------------------------------------------------------------ #
@@ -197,20 +201,22 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     emin, emax = 65, 10000  # These are MeV
     analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
 
-    plot_spectra(*[a.results for a in analysis[::1]], flux_unit="erg2/(cm2 s keV)", fit_cmap='viridis',
+    plot_spectra(*[a.results for a in analysis[::1]], flux_unit="1/(cm2 s keV)", fit_cmap='viridis',
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
 
-    """
+    
     #plotting spectrum attenuation models
-    spectrum, spectrumEBL = loadModels(TRIGGER_ID, RA, DEC, REDSHIFT)
+    spectrum, spectrumEBL_Dom,spectrumEBL_Gil = loadModels(TRIGGER_ID, RA, DEC, REDSHIFT)
     energies=np.logspace(emin,emax,100)*u.MeV
     
-    plt.loglog(energies,spectrum(energies)*(u.erg**2),label="unattenuated")
-    plt.loglog(energies,spectrumEBL(energies)*(u.erg**2),label="Dominiguez attenuated")
+    plt.loglog(energies,spectrum(energies),label="unattenuated")
+    plt.loglog(energies,spectrumEBL_Dom(energies),label="Dominiguez attenuated")
+    plt.loglog(energies,spectrumEBL_Gil(energies),label="Gilmore attenuated")
     plt.legend()
-    """
+
+    plt.ylabel(r"Flux (ph cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
 
 
     if savePlots == True:
