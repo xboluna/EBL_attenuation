@@ -22,6 +22,11 @@ warnings.filterwarnings("ignore")
 
 from threeML import *
 
+try:
+    import ebltable
+except:
+    print("You need to install ebltable: 'pip install ebltable'")
+    raise 
 
 
 TRIGGER_ID    = "080916009"
@@ -80,7 +85,7 @@ def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IR
         exe+=' --%s %s' % (k,i)
     exe+=' %s' % triggername
     print(exe)
-    os.system(exe)
+    #os.system(exe)
     return analysis_dir
 
 
@@ -99,13 +104,23 @@ def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
 # Spectral functions
 # -------------------------------------------------------------- #
 
-def setup_powerlaw_model(src_name):
+def setup_powerlaw_model(src_name,index,REDSHIFT=0):
     powerlaw = Powerlaw()
     powerlaw.index.prior = Uniform_prior(lower_bound=-5.0, upper_bound=5.0)
     powerlaw.K.prior = Log_uniform_prior(lower_bound=1.0e-20, upper_bound=1e-10)
     powerlaw.piv     = 5.0e+5
-    source = PointSource(src_name, RA, DEC, spectral_shape=powerlaw)
-    source = PointSource(src_name, RA, DEC, spectral_shape=powerlaw)
+    powerlaw.index   = index
+    #
+    if REDSHIFT>0:
+        powerlaw.index.free = False
+
+        ebl = EBLattenuation()
+        spectrumEBL_Dom = powerlaw * ebl
+        spectrumEBL_Dom.redshift_2 = REDSHIFT * u.dimensionless_unscaled
+        source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL_Dom)
+    else:
+        source = PointSource(src_name, RA, DEC, spectral_shape=powerlaw)
+
     return Model(source)
 
 def setup_exponential_model(src_name):
@@ -122,12 +137,14 @@ def setup_exponential_model(src_name):
     return Model(source)
 # ------------------------------------------------------------------------------ #
 
-def do_LAT_analysis(tstart,tstop,emin,emax,irf='p8_transient010e'):
+def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transient010e'):
     analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, TSTARTS=[tstart], TSTOPS=[tstop],
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH)
     like = False # If Like is true: jopint likelihood analysis. Else: Bayesian (Multinest) analysis.
-    model = setup_powerlaw_model('bn%s' % TRIGGER_ID)
+
+    model = setup_powerlaw_model('bn%s' % TRIGGER_ID,index=index,REDSHIFT=REDSHIFT)
+
     model.display(complete=True)
 
     lat_plugin = get_lat_like(tstart, tstop, FT2)
@@ -135,8 +152,8 @@ def do_LAT_analysis(tstart,tstop,emin,emax,irf='p8_transient010e'):
     if like:
         jl = JointLikelihood(model, DataList(lat_plugin))
         jl.fit()
-        plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV',
-                     ene_min=10, ene_max=10e+4)
+        #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV',
+        #             ene_min=10, ene_max=10e+4)
         return jl
     else:
         bayes = BayesianAnalysis(model, DataList(lat_plugin))
@@ -163,8 +180,10 @@ if __name__ == "__main__":
     fig, ax = plt.subplots()
     emin,emax=65,1000 # These are MeV
     analysis.append(do_LAT_analysis(tstart, tstop, emin,emax))
-    emin, emax = 65, 10000  # These are MeV
+    emin, emax = 65, 100000  # These are MeV
     analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
+    emin, emax = 65, 100000  # These are MeV
+    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax, index=-2.04, REDSHIFT=4.35))
 
     plot_spectra(*[a.results for a in analysis[::1]], flux_unit="erg2/(cm2 s keV)", fit_cmap='viridis',
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
