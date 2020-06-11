@@ -13,6 +13,8 @@ else:
 
 ##########
 
+import pdb
+
 #parses argument as GRB to investigate
 import argparse
 parser = argparse.ArgumentParser(description='run analysis on a specified GRB')
@@ -96,13 +98,23 @@ def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
 # Spectral functions
 # -------------------------------------------------------------- #
 
-def setup_powerlaw_model(src_name):
+def setup_powerlaw_model(src_name,index,REDSHIFT=0):    #default if REDSHIFT parameter not given
     powerlaw = Powerlaw()
     powerlaw.index.prior = Uniform_prior(lower_bound=-5.0, upper_bound=5.0)
     powerlaw.K.prior = Log_uniform_prior(lower_bound=1.0e-20, upper_bound=1e-10)
     powerlaw.piv     = 5.0e+5
-    source = PointSource(src_name, RA, DEC, spectral_shape=powerlaw)
-    source = PointSource(src_name, RA, DEC, spectral_shape=powerlaw)
+    powerlaw.index   = index
+    if REDSHIFT>0:
+        powerlaw.index.free = False
+
+        ebl = EBLattenuation()
+        ebl.set_ebl_model('gilmore')
+        spectrumEBL = powerlaw * ebl
+        spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
+        source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL)
+        
+    else:
+        source = PointSource(src_name, RA, DEC, spectral_shape=powerlaw)
     return Model(source)
 
 def setup_exponential_model(src_name):
@@ -119,12 +131,13 @@ def setup_exponential_model(src_name):
     return Model(source)
 # ------------------------------------------------------------------------------ #
 
-def do_LAT_analysis(tstart,tstop,emin,emax,irf='p8_transient010e'):
+def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transient010e'):
     analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, TSTARTS=[tstart], TSTOPS=[tstop],
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH)
     like = False # If Like is true: joint likelihood analysis. Else: Bayesian (Multinest) analysis.
-    model = setup_powerlaw_model('bn%s' % TRIGGER_ID)
+    
+    model = setup_powerlaw_model('bn%s' % TRIGGER_ID,index,REDSHIFT)
     model.display(complete=True)
 
     lat_plugin = get_lat_like(tstart, tstop, FT2)
@@ -132,8 +145,7 @@ def do_LAT_analysis(tstart,tstop,emin,emax,irf='p8_transient010e'):
     if like:
         jl = JointLikelihood(model, DataList(lat_plugin))
         jl.fit()
-        plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV',
-                     ene_min=10, ene_max=10e+4)
+        #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV', ene_min=10, ene_max=10e+4)
         return jl
     else:
         bayes = BayesianAnalysis(model, DataList(lat_plugin))
@@ -152,30 +164,6 @@ def do_LAT_analysis(tstart,tstop,emin,emax,irf='p8_transient010e'):
 
 # ------------------------------------------------------------------------------ #
 
-def loadModels(TRIGGER_ID,RA,DEC,REDSHIFT):
-    
-    #define attenuated spectrum
-    spectrum = Powerlaw()
-    source1 = PointSource('Mrk421',ra=RA,dec=DEC,spectral_shape=spectrum)#why can't I change source name?
-    spectrum.piv = 5.e5 * u.keV 
-    spectrum.K = 4.02e-11 / (u.keV * u.cm**2 * u.s)
-    spectrum.index = -2.21
-    
-    #define attenuated spectrum for Dominiguez
-    ebl = EBLattenuation()
-    spectrumEBL_Dom = spectrum*ebl
-    spectrumEBL_Dom.redshift_2 = REDSHIFT*u.dimensionless_unscaled
-    source2 = PointSource('Mrk421', ra=RA, dec=DEC,spectral_shape=spectrumEBL_Dom)##
-    
-    #define attenuation for Gilmore
-    ebl2 = EBLattenuation().set_ebl_model('gilmore')
-    spectrumEBL_Gil = spectrum*ebl
-    spectrumEBL_Gil.redshift_r = REDSHIFT*u.dimensionless_unscaled
-    source3 = PointSource('Mrk421', ra=RA, dec=DEC, spectral_shape=spectrumEBL_Gil)
-
-    return spectrum,spectrumEBL_Dom,spectrumEBL_Gil
-
-
 # ------------------------------------------------------------------------------ #
 
 #takes: trigger ID
@@ -190,39 +178,42 @@ def findGRB(grb_name):
         print('grb %i not found'%grb_name)
         exit()
 
+#container to run analysis generally
+#takes: trigger information - RA, DEC, REDSHIFT
 def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     analysis=[]
     tstart = 0.0
     tstop  = 600.0
-
     fig, ax = plt.subplots()
-    emin,emax=65,1000 # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin,emax))
-    emin, emax = 65, 10000  # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
 
-    plot_spectra(*[a.results for a in analysis[::1]], flux_unit="1/(cm2 s keV)", fit_cmap='viridis',
+    print('--------------- Running first fit ')
+    emin, emax = 65, 1000    # These are MeV
+    analysis.append(do_LAT_analysis(tstart, tstop, emin,emax))
+
+    print('--------------- Running second fit ')
+    emin, emax = 65, 100000  # These are MeV
+    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
+    #pulls photon index of first fit for use in EBL model
+    bayesIndex = getattr(analysis[0].likelihood_model,'bn%s'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
+
+    print('--------------- Running ebl attenuation ')
+    emin, emax = 65, 100000  # These are MeV
+    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax, index=bayesIndex, REDSHIFT=REDSHIFT))
+
+    plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
+    plt.grid(which='both')
+
+    plot_spectra(*[a.results for a in analysis[::1]], flux_unit="erg2/(cm2 s keV)", fit_cmap='viridis',
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
-
-    
-    #plotting spectrum attenuation models
-    spectrum, spectrumEBL_Dom,spectrumEBL_Gil = loadModels(TRIGGER_ID, RA, DEC, REDSHIFT)
-    energies=np.logspace(emin,emax,100)*u.MeV
-    
-    plt.loglog(energies,spectrum(energies),label="unattenuated")
-    plt.loglog(energies,spectrumEBL_Dom(energies),label="Dominiguez attenuated")
-    plt.loglog(energies,spectrumEBL_Gil(energies),label="Gilmore attenuated")
-    plt.legend()
-
-    plt.ylabel(r"Flux (ph cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
 
 
     if savePlots == True:
         plt.savefig(TRIGGER_ID+'.png')
     else:
         plt.show()
+    return;
 
 
 # ------------------------------------------------------------------------------- #
@@ -237,7 +228,7 @@ if __name__ == "__main__":
         print("####################################")
         TRIGGER_ID = i
         RA, DEC, REDSHIFT = findGRB(i) #scans catalog for given trigger, returns RA and DEC 
-        print("RA: %s   DEC: %s   RS: %s"%(RA,DEC,REDSHIFT))
+        print("TRIGGER_ID: %s RA: %s   DEC: %s   RS: %s"%(TRIGGER_ID,RA,DEC,REDSHIFT))
         GBM_DATA_PATH = './GRB%s' % TRIGGER_ID
         LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData') # This has to point where the gtburst data directory points.
         FT2 = LAT_DATA_PATH + '/bn%s/gll_ft2_tr_bn%s_v00.fit' % (TRIGGER_ID, TRIGGER_ID)
