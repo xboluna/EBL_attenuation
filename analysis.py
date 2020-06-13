@@ -13,7 +13,8 @@ else:
 
 ##########
 
-import pdb
+#import pdb
+import copy
 
 #parses argument as GRB to investigate
 import argparse
@@ -34,12 +35,12 @@ from threeML import *
 catalog = pd.read_csv('EBL_candidates/selectedGRBs.csv')
 
 
-def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IRF='p8_transient010e', data_path='./'):
+def doLAT(OUTFILE,RA,DEC,ebl_model,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IRF='p8_transient010e', data_path='./'):
     '''
     This is a simple wrapper of the doTimeResolvedLike of gtburst
     TSTARTS,TSTOPS can be arrays if you want to run multiple intervals
     '''
-    analysis_dir = 'analysis_%s_%s' % (EMIN,EMAX)
+    analysis_dir = 'analysis_%s_%s_%s' % (EMIN,EMAX,ebl_model)
     os.system('mkdir -p %s' % analysis_dir)
     os.chdir(analysis_dir)
     exe='$CONDA_PREFIX/lib/python2.7/site-packages/fermitools/GtBurst/scripts/doTimeResolvedLike.py'
@@ -98,7 +99,7 @@ def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
 # Spectral functions
 # -------------------------------------------------------------- #
 
-def setup_powerlaw_model(src_name,index,REDSHIFT=0):    #default if REDSHIFT parameter not given
+def setup_powerlaw_model(src_name,index,ebl_model,REDSHIFT=0):    #default if REDSHIFT parameter not given
     powerlaw = Powerlaw()
     powerlaw.index.prior = Uniform_prior(lower_bound=-5.0, upper_bound=5.0)
     powerlaw.K.prior = Log_uniform_prior(lower_bound=1.0e-20, upper_bound=1e-10)
@@ -108,7 +109,7 @@ def setup_powerlaw_model(src_name,index,REDSHIFT=0):    #default if REDSHIFT par
         powerlaw.index.free = False
 
         ebl = EBLattenuation()
-        ebl.set_ebl_model('gilmore')
+        ebl.set_ebl_model(ebl_model)
         spectrumEBL = powerlaw * ebl
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
         source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL)
@@ -131,13 +132,13 @@ def setup_exponential_model(src_name):
     return Model(source)
 # ------------------------------------------------------------------------------ #
 
-def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transient010e'):
-    analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, TSTARTS=[tstart], TSTOPS=[tstop],
+def do_LAT_analysis(tstart,tstop,emin,emax,ebl_model='powerlaw',index=-2.0,REDSHIFT=0,irf='p8_transient010e'):
+    analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, ebl_model, TSTARTS=[tstart], TSTOPS=[tstop],
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH)
     like = False # If Like is true: joint likelihood analysis. Else: Bayesian (Multinest) analysis.
-    
-    model = setup_powerlaw_model('bn%s' % TRIGGER_ID,index,REDSHIFT)
+
+    model = setup_powerlaw_model('bn%s_%s'%(TRIGGER_ID,ebl_model),index,ebl_model,REDSHIFT)
     model.display(complete=True)
 
     lat_plugin = get_lat_like(tstart, tstop, FT2)
@@ -146,6 +147,8 @@ def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transie
         jl = JointLikelihood(model, DataList(lat_plugin))
         jl.fit()
         #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV', ene_min=10, ene_max=10e+4)
+
+        os.chdir('..') #replaces you to top of the cwd
         return jl
     else:
         bayes = BayesianAnalysis(model, DataList(lat_plugin))
@@ -159,6 +162,8 @@ def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transie
         #  display_spectrum_model_counts(bayes, min_rate=20)
         #plot_spectra(bayes.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV',
         #             ene_min=10, ene_max=10e+4)
+
+        os.chdir('..') #replaces you to top of the cwd
         return bayes
 
 
@@ -194,25 +199,31 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     emin, emax = 65, 100000  # These are MeV
     analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
     #pulls photon index of first fit for use in EBL model
-    bayesIndex = getattr(analysis[0].likelihood_model,'bn%s'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
+    bayesIndex = getattr(analysis[0].likelihood_model,'bn%s_powerlaw'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
 
-    print('--------------- Running ebl attenuation ')
-    emin, emax = 65, 100000  # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax, index=bayesIndex, REDSHIFT=REDSHIFT))
+    for i in ['dominguez','finke','gilmore','franceschini','kneiske']:
 
-    plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
-    plt.grid(which='both')
+        #only if you want separate images for each model
+        pwlAnalysis = copy.copy(analysis)
 
-    plot_spectra(*[a.results for a in analysis[::1]], flux_unit="erg2/(cm2 s keV)", fit_cmap='viridis',
+        print('--------------- Running ebl attenuation model %s with photon index %s'%(i,bayesIndex))
+        emin, emax = 65, 100000  # These are MeV
+        pwlAnalysis.append(do_LAT_analysis(tstart, tstop, emin, emax, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
+
+        plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
+        plt.grid(True)
+
+        plot_spectra(*[a.results for a in pwlAnalysis[::1]], flux_unit="erg2/(cm2 s keV)", fit_cmap='viridis',
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
 
+        if savePlots == True:
+            plt.savefig('%s_%s'%(TRIGGER_ID,i)+'.png')
+        else:
+            plt.show()
 
-    if savePlots == True:
-        plt.savefig(TRIGGER_ID+'.png')
-    else:
-        plt.show()
+
     return;
 
 
