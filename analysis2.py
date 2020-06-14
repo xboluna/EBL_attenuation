@@ -191,38 +191,36 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     tstop  = 600.0
     fig, ax = plt.subplots()
 
-    print('--------------- Running first fit ')
-    emin, emax = 65, 1000    # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin,emax))
-
-    print('--------------- Running second fit ')
-    emin, emax = 65, 100000  # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
+    abs_emin,abs_emax = 65,100000 #MeV
+    E = np.linspace(abs_emin,abs_emax,num=7)
+    for i in range(2,len(E)):
+        print('--------------- Running fit %s'%(i+1))
+        analysis.append(do_LAT_analysis(tstart,tstop,emin=abs_emin,emax=E[i]))
+        
     #pulls photon index of first fit for use in EBL model
     bayesIndex = getattr(analysis[0].likelihood_model,'bn%s_powerlaw'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
 
-    for i in ['dominguez','finke','gilmore','franceschini','kneiske']:
+    for i in ['dominguez']:
 
         #only if you want separate images for each model
         pwlAnalysis = copy.copy(analysis)
 
         print('--------------- Running ebl attenuation model %s with photon index %s'%(i,bayesIndex))
         emin, emax = 65, 100000  # These are MeV
-        pwlAnalysis.append(do_LAT_analysis(tstart, tstop, emin, emax, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
+        pwlAnalysis.append(do_LAT_analysis(tstart, tstop, abs_emin, abs_emax, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
 
         plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
         plt.grid(True)
 
         plot_spectra(*[a.results for a in pwlAnalysis[::1]], flux_unit="erg2/(cm2 s keV)", fit_cmap='viridis',
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
-                 energy_unit='MeV', ene_min=emin, ene_max=emax
+                 energy_unit='MeV', ene_min=abs_emin, ene_max=abs_emax
                  );
 
-        if savePlots == True:
-            plt.savefig('%s_%s'%(TRIGGER_ID,i)+'.png')
-        else:
-            plt.show()
-
+    if savePlots == True:
+        plt.savefig('%s_%s'%(TRIGGER_ID,i)+'.png')
+    else:
+        plt.show()
 
     return;
 
