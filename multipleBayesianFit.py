@@ -13,7 +13,7 @@ else:
 
 ##########
 
-#import pdb
+import pdb
 import copy
 
 #parses argument as GRB to investigate
@@ -103,7 +103,7 @@ def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
 # Spectral functions
 # -------------------------------------------------------------- #
 
-def setup_powerlaw_model(src_name,index,ebl_model,REDSHIFT=0):    #default if REDSHIFT parameter not given
+def setup_powerlaw_model(src_name,index,RA,DEC,REDSHIFT=0):    #default if REDSHIFT parameter not given
     powerlaw = Powerlaw()
     powerlaw.index.prior = Uniform_prior(lower_bound=-5.0, upper_bound=5.0)
     powerlaw.K.prior = Log_uniform_prior(lower_bound=1.0e-20, upper_bound=1e-10)
@@ -187,8 +187,7 @@ if __name__ == "__main__":
 
 
     ########
-    for i in (0,len(args.grbs)):
-
+    for i in range(0,len(args.grbs)): 
         print("####################################")
         print("retrieving information for %s"%args.grbs[i])
         print("####################################")
@@ -208,24 +207,25 @@ if __name__ == "__main__":
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH) )
 
-        lat_plugin.append(get_lat_like(tstart,tstop,FT2))
+        lat_plugin.append(DataList(get_lat_like(tstart,tstop,FT2)))
 
 
 
         #get powerlaws for each source
-        sources.append(setup_powerlaw_model('bn'+TRIGGER_ID[i]))
+        sources.append(setup_powerlaw_model('bn'+TRIGGER_ID[i],-2.0,RA[i],DEC[i]))
     #########
 
 
 
 
     #collate all sources into a single model
-    model = Model(sources)
+    print('Collating models...')
+    model = Model(*sources)
     model.display()
-    LAT_datalist = DataList(lat_plugin)
 
     #perform analysis on group of sources
-    bayes = BayesianAnalysis(model, LAT_datalist)
+    print('Performing Bayesian analysis')
+    bayes = BayesianAnalysis(model,lat_plugin[0])
     bayes.likelihood_model.LAT_GalacticTemplate_Value.set_uninformative_prior(Uniform_prior)
     bayes.likelihood_model.LAT_IsotropicTemplate_Normalization.set_uninformative_prior(Uniform_prior)
     bayes.set_sampler("multinest")
