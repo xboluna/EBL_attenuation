@@ -13,8 +13,8 @@ else:
 
 ##########
 
-#import pdb
-import copy
+import pdb
+import joint_likelihood_adapted as jla
 
 #parses argument as GRB to investigate
 import argparse
@@ -107,10 +107,11 @@ def setup_powerlaw_model(src_name,index,ebl_model,REDSHIFT=0):    #default if RE
     powerlaw.index   = index
     if REDSHIFT>0:
         powerlaw.index.free = False
-
+        powerlaw.b = 1.0 * u.dimensionless_unscaled
+        powerlaw.b.prior = Uniform_prior(lower_bound=0,upper_bound=10.0)
         ebl = EBLattenuation()
         ebl.set_ebl_model(ebl_model)
-        spectrumEBL = powerlaw * ebl
+        spectrumEBL = powerlaw * ebl * powerlaw.b #powerlaw.b = C = e**b
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
         source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL)
         
@@ -136,7 +137,7 @@ def do_LAT_analysis(tstart,tstop,emin,emax,ebl_model='powerlaw',index=-2.0,REDSH
     analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, ebl_model, TSTARTS=[tstart], TSTOPS=[tstop],
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH)
-    like = False # If Like is true: joint likelihood analysis. Else: Bayesian (Multinest) analysis.
+    like = True # If Like is true: joint likelihood analysis. Else: Bayesian (Multinest) analysis.
 
     model = setup_powerlaw_model('bn%s_%s'%(TRIGGER_ID,ebl_model),index,ebl_model,REDSHIFT)
     model.display(complete=True)
@@ -144,7 +145,7 @@ def do_LAT_analysis(tstart,tstop,emin,emax,ebl_model='powerlaw',index=-2.0,REDSH
     lat_plugin = get_lat_like(tstart, tstop, FT2)
 
     if like:
-        jl = JointLikelihood(model, DataList(lat_plugin))
+        jl = jla.JointLikelihood(model, DataList(lat_plugin))
         jl.fit()
         #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV', ene_min=10, ene_max=10e+4)
 
@@ -200,11 +201,13 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
     #pulls photon index of first fit for use in EBL model
     bayesIndex = getattr(analysis[0].likelihood_model,'bn%s_powerlaw'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
+    
+    pdb.set_trace()
 
-    for i in ['dominguez','finke','gilmore','franceschini','kneiske']:
+    for i in ['dominguez']:#,'finke','gilmore','franceschini','kneiske']:
 
         #only if you want separate images for each model
-        pwlAnalysis = copy.copy(analysis)
+        pwlAnalysis = list(analysis)
 
         print('--------------- Running ebl attenuation model %s with photon index %s'%(i,bayesIndex))
         emin, emax = 65, 100000  # These are MeV
@@ -217,6 +220,8 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
                  contour_cmap='viridis', contour_style_kwargs=dict(alpha=0.1),
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
+
+        pdb.set_trace()
 
         if savePlots == True:
             plt.savefig('%s_%s'%(TRIGGER_ID,i)+'.png')
