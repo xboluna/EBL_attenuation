@@ -92,7 +92,7 @@ def doLAT(OUTFILE,RA,DEC,ebl_model,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX
     return analysis_dir
 
 
-def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
+def get_lat_like(t0, t1, ft2File, TRIGGER_ID,fermi_dir='.'):
     '''This is an helper funtion to retrieve the LAT data files saved by the doLAT step '''
     directory= '%s/interval%s-%s/' % (fermi_dir, t0, t1)
     print(directory)
@@ -100,8 +100,10 @@ def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
 
     eventFile = glob.glob("%s/*_filt.fit" % directory)[0]
     expomap = glob.glob("%s/*_filt_expomap.fit" % directory)[0] 
-    ltcube = glob.glob("%s/*_filt_ltcube.fit" % directory)[0] 
-    return FermiLATLike("LAT", eventFile, ft2File, ltcube, 'unbinned', expomap)
+    ltcube = glob.glob("%s/*_filt_ltcube.fit" % directory)[0]
+
+    #FermiLatLike on 187 in plugins dir
+    return FermiLATLike("bn%s"%TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap)
 
 # -------------------------------------------------------------- #
 # Spectral functions
@@ -144,7 +146,7 @@ def setup_exponential_model(src_name):
     return Model(source)
 # ------------------------------------------------------------------------------ #
 
-def do_LAT_analysis(tstart,tstop,emin,emax,ebl_model='powerlaw',index=-2.0,REDSHIFT=0,irf='p8_transient010e'):
+def do_LAT_analysis(tstart,tstop,emin,emax,TRIGGER_ID,ebl_model='powerlaw',index=-2.0,REDSHIFT=0,irf='p8_transient010e'):
     analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, ebl_model, TSTARTS=[tstart], TSTOPS=[tstop],
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH)
@@ -156,7 +158,8 @@ def do_LAT_analysis(tstart,tstop,emin,emax,ebl_model='powerlaw',index=-2.0,REDSH
         model = setup_powerlaw_model('bn%s'%TRIGGER_ID,index)
     model.display(complete=True)
 
-    lat_plugin = get_lat_like(tstart, tstop, FT2)
+    pdb.set_trace()
+    lat_plugin = get_lat_like(tstart, tstop, FT2, TRIGGER_ID)
 
     if like:
         jl = JointLikelihood(model, DataList(lat_plugin))
@@ -208,11 +211,11 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
 
     print('--------------- Running first fit ')
     emin, emax = 65, 1000    # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin,emax))
+    analysis.append(do_LAT_analysis(tstart, tstop, emin,emax,TRIGGER_ID))
 
     print('--------------- Running second fit ')
     emin, emax = 65, 100000  # These are MeV
-    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
+    analysis.append(do_LAT_analysis(tstart, tstop, emin, emax,TRIGGER_ID))
     #pulls photon index of first fit for use in EBL model
     bayesIndex = getattr(analysis[0].likelihood_model,'bn%s'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
     
@@ -224,7 +227,7 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
 
         print('--------------- Running ebl attenuation model %s with photon index %s'%(i,bayesIndex))
         emin, emax = 65, 100000  # These are MeV
-        pwlAnalysis.append(do_LAT_analysis(tstart, tstop, emin, emax, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
+        pwlAnalysis.append(do_LAT_analysis(tstart, tstop, emin, emax, TRIGGER_ID, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
 
         plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
         plt.grid(True)
