@@ -7,10 +7,9 @@ args = parser.parse_args()
 if(args.accumulate==True):
     import matplotlib
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     print("Plots will be saved")
-else:
-    import matplotlib.pyplot as plt
+
+import matplotlib.pyplot as plt
 
 import os
 import numpy as np
@@ -20,12 +19,21 @@ import astropy.units as u
 import warnings
 warnings.filterwarnings("ignore")
 
+#for drawing local modifications to a threeML fork
+if(True):
+    import sys
+    #environment path : /home/xavier/miniconda3/envs/threeml_fermi/lib/python2.7/site-packages
+    sys.path.insert(0,'threeML_repo')
+    #sys.path.insert(0,'astromodels_repo')
+    import pdb
+
 from threeML import *
 
 try:
     import ebltable
 except:
-    print("You need to install ebltable: 'pip install ebltable'")
+    print("You need to install ebltable")
+    print('> pip install ebltable')
     raise 
 
 
@@ -115,6 +123,8 @@ def setup_powerlaw_model(src_name,index,REDSHIFT=0):
         powerlaw.index.free = False
 
         ebl = EBLattenuation()
+        ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=1.0) 
+
         spectrumEBL_Dom = powerlaw * ebl
         spectrumEBL_Dom.redshift_2 = REDSHIFT * u.dimensionless_unscaled
         source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL_Dom)
@@ -141,7 +151,7 @@ def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transie
     analysis_dir = doLAT('%s' % TRIGGER_ID, RA, DEC, TSTARTS=[tstart], TSTOPS=[tstop],
                 ROI=5.0, ZMAX=105, EMIN=emin, EMAX=emax,
                 IRF=irf, data_path=LAT_DATA_PATH)
-    like = False # If Like is true: jopint likelihood analysis. Else: Bayesian (Multinest) analysis.
+    like = True # If Like is true: jopint likelihood analysis. Else: Bayesian (Multinest) analysis.
 
     model = setup_powerlaw_model('bn%s' % TRIGGER_ID,index=index,REDSHIFT=REDSHIFT)
 
@@ -150,7 +160,8 @@ def do_LAT_analysis(tstart,tstop,emin,emax,index=-2.0,REDSHIFT=0,irf='p8_transie
     lat_plugin = get_lat_like(tstart, tstop, FT2)
 
     if like:
-        jl = JointLikelihood(model, DataList(lat_plugin))
+        jl = JointLikelihood(model, DataList(lat_plugin), source_names = ['bn080916009'])
+        #pdb.set_trace()
         jl.fit()
         #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV',
         #             ene_min=10, ene_max=10e+4)

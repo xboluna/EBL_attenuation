@@ -14,7 +14,6 @@ else:
 ##########
 
 import pdb
-import joint_likelihood_adapted as jla
 
 #parses argument as GRB to investigate
 import argparse
@@ -30,10 +29,18 @@ import astropy.units as u
 import warnings
 warnings.filterwarnings("ignore")
 
+
+#import local modifications to threeML
+if (True):
+    import sys
+    sys.path.insert(0,'threeML_repo')
+
 from threeML import *
 
-catalog = pd.read_csv('EBL_candidates/selectedGRBs.csv')
 
+
+catalog = pd.read_csv('EBL_candidates/selectedGRBs.csv')
+owd = os.path.abspath(os.curdir)
 
 def doLAT(OUTFILE,RA,DEC,ebl_model,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IRF='p8_transient010e', data_path='./'):
     '''
@@ -50,6 +57,7 @@ def doLAT(OUTFILE,RA,DEC,ebl_model,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX
     args['ra']      = RA
     args['dec']     = DEC
     args['roi']     = ROI
+
     TSTARTS_str     = ''
     TSTOPS_str      = ''
     for t0,t1 in zip(TSTARTS,TSTOPS):
@@ -85,7 +93,7 @@ def doLAT(OUTFILE,RA,DEC,ebl_model,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX
 
 
 def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
-    '''This is an helper funtion to retrieve the LAT data files saved by the doLAT step '''
+    '''This is an helper funtion to retrieve the LAT data files saved by the doLAT step '''
     directory= '%s/interval%s-%s/' % (fermi_dir, t0, t1)
     print(directory)
     print(os.path.abspath(directory))
@@ -99,7 +107,7 @@ def get_lat_like(t0, t1, ft2File, fermi_dir='.'):
 # Spectral functions
 # -------------------------------------------------------------- #
 
-def setup_powerlaw_model(src_name,index,ebl_model,REDSHIFT=0):    #default if REDSHIFT parameter not given
+def setup_powerlaw_model(src_name,index,ebl_model='powerlaw',REDSHIFT=0):    #default if REDSHIFT parameter not given
     powerlaw = Powerlaw()
     powerlaw.index.prior = Uniform_prior(lower_bound=-5.0, upper_bound=5.0)
     powerlaw.K.prior = Log_uniform_prior(lower_bound=1.0e-20, upper_bound=1e-10)
@@ -107,12 +115,15 @@ def setup_powerlaw_model(src_name,index,ebl_model,REDSHIFT=0):    #default if RE
     powerlaw.index   = index
     if REDSHIFT>0:
         powerlaw.index.free = False
-        powerlaw.b = 1.0 * u.dimensionless_unscaled
-        powerlaw.b.prior = Uniform_prior(lower_bound=0,upper_bound=10.0)
+
         ebl = EBLattenuation()
+
         ebl.set_ebl_model(ebl_model)
-        spectrumEBL = powerlaw * ebl * powerlaw.b #powerlaw.b = C = e**b
+        ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=1.0)
+        
+        spectrumEBL = powerlaw * ebl
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
+        spectrumEBL.fit = Uniform_prior(lower_bound = 0.0, upper_bound = 1.0) * u.dimensionless_unscaled
         source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL)
         
     else:
@@ -139,13 +150,16 @@ def do_LAT_analysis(tstart,tstop,emin,emax,ebl_model='powerlaw',index=-2.0,REDSH
                 IRF=irf, data_path=LAT_DATA_PATH)
     like = True # If Like is true: joint likelihood analysis. Else: Bayesian (Multinest) analysis.
 
-    model = setup_powerlaw_model('bn%s_%s'%(TRIGGER_ID,ebl_model),index,ebl_model,REDSHIFT)
+    if REDSHIFT is not 0: 
+        model = setup_powerlaw_model('bn%s_%s'%(TRIGGER_ID,ebl_model),index,ebl_model,REDSHIFT)
+    else:
+        model = setup_powerlaw_model('bn%s'%TRIGGER_ID,index)
     model.display(complete=True)
 
     lat_plugin = get_lat_like(tstart, tstop, FT2)
 
     if like:
-        jl = jla.JointLikelihood(model, DataList(lat_plugin))
+        jl = JointLikelihood(model, DataList(lat_plugin))
         jl.fit()
         #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV', ene_min=10, ene_max=10e+4)
 
@@ -200,10 +214,9 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     emin, emax = 65, 100000  # These are MeV
     analysis.append(do_LAT_analysis(tstart, tstop, emin, emax))
     #pulls photon index of first fit for use in EBL model
-    bayesIndex = getattr(analysis[0].likelihood_model,'bn%s_powerlaw'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
+    bayesIndex = getattr(analysis[0].likelihood_model,'bn%s'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
     
-    pdb.set_trace()
-
+    
     for i in ['dominguez']:#,'finke','gilmore','franceschini','kneiske']:
 
         #only if you want separate images for each model
@@ -221,7 +234,7 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
                  energy_unit='MeV', ene_min=emin, ene_max=emax
                  );
 
-        pdb.set_trace()
+        
 
         if savePlots == True:
             plt.savefig('%s_%s'%(TRIGGER_ID,i)+'.png')
@@ -237,7 +250,6 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
 
 if __name__ == "__main__":
     
-    owd = os.path.abspath(os.curdir)
     for i in args.grbs:
         print("####################################")
         print("analyzing %s"%i)
