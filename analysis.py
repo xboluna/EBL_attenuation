@@ -121,7 +121,7 @@ def setup_powerlaw_model(src_name,index,ebl_model='powerlaw',REDSHIFT=0):    #de
         ebl = EBLattenuation()
 
         ebl.set_ebl_model(ebl_model)
-        ebl.fit.prior = 1.0*u.dimensionless_unscaled#Uniform_prior(lower_bound = 0.0, upper_bound=1.0)
+        ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=10.0)
         
         spectrumEBL = powerlaw * ebl
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
@@ -158,7 +158,7 @@ def do_LAT_analysis(tstart,tstop,emin,emax,TRIGGER_ID,ebl_model='powerlaw',index
         model = setup_powerlaw_model('bn%s'%TRIGGER_ID,index)
     model.display(complete=True)
 
-    pdb.set_trace()
+    
     lat_plugin = get_lat_like(tstart, tstop, FT2, TRIGGER_ID)
 
     if like:
@@ -167,6 +167,7 @@ def do_LAT_analysis(tstart,tstop,emin,emax,TRIGGER_ID,ebl_model='powerlaw',index
         #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', energy_unit='MeV', ene_min=10, ene_max=10e+4)
 
         os.chdir('..') #replaces you to top of the cwd
+        
         return jl
     else:
         bayes = BayesianAnalysis(model, DataList(lat_plugin))
@@ -228,6 +229,7 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
         print('--------------- Running ebl attenuation model %s with photon index %s'%(i,bayesIndex))
         emin, emax = 65, 100000  # These are MeV
         pwlAnalysis.append(do_LAT_analysis(tstart, tstop, emin, emax, TRIGGER_ID, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
+        pwlAnalysis[2].plot_all_contours(0)
 
         plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
         plt.grid(True)
