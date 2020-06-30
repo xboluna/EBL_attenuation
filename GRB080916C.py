@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 if(True):
     import sys
     #environment path : /home/xavier/miniconda3/envs/threeml_fermi/lib/python2.7/site-packages
-    sys.path.insert(0,'threeML_repo')
+    sys.path.insert(0,'../threeML_repo')
     #sys.path.insert(0,'astromodels_repo')
     import pdb
 
@@ -123,7 +123,7 @@ def setup_powerlaw_model(src_name,index,REDSHIFT=0):
         powerlaw.index.free = False
 
         ebl = EBLattenuation()
-        ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=1.0) 
+        ebl.fit.prior = 1.0 * u.dimensionless_unscaled 
 
         spectrumEBL_Dom = powerlaw * ebl
         spectrumEBL_Dom.redshift_2 = REDSHIFT * u.dimensionless_unscaled

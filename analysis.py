@@ -121,7 +121,7 @@ def setup_powerlaw_model(src_name,index,ebl_model='powerlaw',REDSHIFT=0):    #de
         ebl = EBLattenuation()
 
         ebl.set_ebl_model(ebl_model)
-        ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=1.0)
+        ebl.fit.prior = 1.0*u.dimensionless_unscaled#Uniform_prior(lower_bound = 0.0, upper_bound=1.0)
         
         spectrumEBL = powerlaw * ebl
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
