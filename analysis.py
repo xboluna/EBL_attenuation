@@ -31,9 +31,9 @@ warnings.filterwarnings("ignore")
 
 
 #import local modifications to threeML
-if (True):
+if (False):
     import sys
-    sys.path.insert(0,'threeML_repo')
+    sys.path.insert(0,'../threeML_repo')
 
 from threeML import *
 
@@ -49,7 +49,7 @@ def doLAT(OUTFILE,RA,DEC,ebl_model,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX
     '''
     analysis_dir = 'analysis_%s_%s_%s' % (EMIN,EMAX,ebl_model)
     os.system('mkdir -p %s' % analysis_dir)
-    os.chdir(analysis_dir)
+    os.chdir(analysis_dir) 
     exe='$CONDA_PREFIX/lib/python2.7/site-packages/fermitools/GtBurst/scripts/doTimeResolvedLike.py'
     #exe='doTimeResolvedLike.py'
     args={}
@@ -125,7 +125,7 @@ def setup_powerlaw_model(src_name,index,ebl_model='powerlaw',REDSHIFT=0):    #de
         
         spectrumEBL = powerlaw * ebl
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
-        spectrumEBL.fit = Uniform_prior(lower_bound = 0.0, upper_bound = 1.0) * u.dimensionless_unscaled
+        #spectrumEBL.fit = Uniform_prior(lower_bound = 0.0, upper_bound = 1.0) * u.dimensionless_unscaled
         source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL)
         
     else:
@@ -185,6 +185,16 @@ def do_LAT_analysis(tstart,tstop,emin,emax,TRIGGER_ID,ebl_model='powerlaw',index
         os.chdir('..') #replaces you to top of the cwd
         return bayes
 
+def plot_fit_profile(analysis,name,steps,xmin = 0,xmax = 2):
+    
+    a, b, cc, fig = analysis.get_contours('%s.spectrum.main.composite.fit_2'%(name),xmin,xmax,steps,param_2 = None)
+    pdb.set_trace()
+    fit = analysis._analysis_results.get_data_frame().iloc[1,0]
+    fig.suptitle('%s :: fit = %s'%(name,fit))
+
+
+    return fig
+
 
 # ------------------------------------------------------------------------------ #
 
@@ -206,6 +216,7 @@ def findGRB(grb_name):
 #takes: trigger information - RA, DEC, REDSHIFT
 def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     analysis=[]
+    models = []
     tstart = 0.0
     tstop  = 600.0
     fig, ax = plt.subplots()
@@ -221,7 +232,7 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     bayesIndex = getattr(analysis[0].likelihood_model,'bn%s'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
     
     
-    for i in ['dominguez']:#,'finke','gilmore','franceschini','kneiske']:
+    for i in ['dominguez','finke','gilmore','franceschini','kneiske']:#
 
         #only if you want separate images for each model
         pwlAnalysis = list(analysis)
@@ -229,7 +240,11 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
         print('--------------- Running ebl attenuation model %s with photon index %s'%(i,bayesIndex))
         emin, emax = 65, 100000  # These are MeV
         pwlAnalysis.append(do_LAT_analysis(tstart, tstop, emin, emax, TRIGGER_ID, ebl_model=i,index=bayesIndex, REDSHIFT=REDSHIFT))
-        pwlAnalysis[2].plot_all_contours(0)
+        
+        #pdb.set_trace()
+        figcc = plot_fit_profile(pwlAnalysis[-1],'bn%s_%s'%(TRIGGER_ID,i),100)
+        figcc.savefig('fit_profile_%s.png'%i)
+
 
         plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
         plt.grid(True)
