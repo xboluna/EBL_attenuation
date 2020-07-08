@@ -93,7 +93,7 @@ def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IR
 
 def get_lat_like(t0, t1, ft2File, TRIGGER_ID,fermi_dir='.'):
     '''This is an helper funtion to retrieve the LAT data files saved by the doLAT step '''
-    directory= '%s/interval%s-%s_%s/' % (fermi_dir, t0, t1,TRIGGER_ID)
+    directory= '%s/interval%s-%s/' % (fermi_dir, t0, t1)
     print(directory)
     print(os.path.abspath(directory))
 
