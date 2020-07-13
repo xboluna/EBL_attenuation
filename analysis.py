@@ -232,7 +232,7 @@ def runAnalysis(TRIGGER_ID,RA,DEC,REDSHIFT):
     bayesIndex = getattr(analysis[0].likelihood_model,'bn%s'%(TRIGGER_ID)).spectrum.main.Powerlaw.index.value
     
     
-    for i in ['dominguez','finke','gilmore','franceschini','kneiske']:#
+    for i in ['kneiske']:#'dominguez','finke','gilmore','franceschini'
 
         #only if you want separate images for each model
         pwlAnalysis = list(analysis)
