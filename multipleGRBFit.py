@@ -47,7 +47,7 @@ def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IR
     This is a simple wrapper of the doTimeResolvedLike of gtburst
     TSTARTS,TSTOPS can be arrays if you want to run multiple intervals
     '''
-    analysis_dir = 'analysis_%s-%s' % (EMIN,EMAX)
+    analysis_dir = '%s_analysis_%s-%s' % (OUTFILE,EMIN,EMAX)
     os.system('mkdir -p %s' % analysis_dir)
     os.chdir(analysis_dir)
     exe='$CONDA_PREFIX/lib/python2.7/site-packages/fermitools/GtBurst/scripts/doTimeResolvedLike.py'
@@ -97,9 +97,10 @@ def get_lat_like(t0, t1, ft2File, TRIGGER_ID,fermi_dir='.'):
     print(directory)
     print(os.path.abspath(directory))
 
-    eventFile = glob.glob("%s/*_filt.fit" % directory)[0]
-    expomap = glob.glob("%s/*_filt_expomap.fit" % directory)[0] 
-    ltcube = glob.glob("%s/*_filt_ltcube.fit" % directory)[0] 
+    
+    eventFile = glob.glob(directory + "/*bn%s_*_filt.fit" % TRIGGER_ID)[0]
+    expomap = glob.glob(directory + "/*bn%s_*_filt_expomap.fit" % TRIGGER_ID)[0] 
+    ltcube = glob.glob(directory + "/*bn%s_*_filt_ltcube.fit" % TRIGGER_ID)[0] 
     return FermiLATLike("bn%s"%TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap)
 
 # -------------------------------------------------------------- #
@@ -179,7 +180,7 @@ if __name__ == "__main__":
     lat_plugin = []
 
 
-    GBM_DATA_PATH = './GroupBayesianFit'
+    GBM_DATA_PATH = './multipleGRBFit'
     os.system('mkdir -p %s' % GBM_DATA_PATH)
     os.chdir(GBM_DATA_PATH)
 
@@ -259,7 +260,7 @@ if __name__ == "__main__":
     """ 
 
     #  display_spectrum_model_counts(bayes, min_rate=20)
-    plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', fit_cmap='viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1),energy_unit='MeV', ene_min=emin, ene_max=emax)
+    #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', fit_cmap='viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1),energy_unit='MeV', ene_min=emin, ene_max=emax)
 
 
     #Plot settings

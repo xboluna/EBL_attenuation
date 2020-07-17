@@ -109,7 +109,7 @@ class perSourceLike(PluginPrototype):
 
     def plot( flux_unit = 'erg2/(cm2 s keV)', fit_cmap = 'viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1), energy_unit = 'MeV', ene_min = 65, ene_max = 100000 ):
 
-        return plot_spectra(self._joint_like.results, flux_unit, fit_cmap, contour_cmap, contour_style_kwargs, energy_unit, ene_min, ene_max)
+        return JointLikelihood.plot_spectra(self._joint_like.results, flux_unit, fit_cmap, contour_cmap, contour_style_kwargs, energy_unit, ene_min, ene_max)
 
 
 
