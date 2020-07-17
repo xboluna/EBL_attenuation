@@ -233,6 +233,7 @@ if __name__ == "__main__":
     
     per = perSourceLike( 'combinedSourceLikelihood', model, plugin, source_names = source_names, quiet = False )
     per.fit()
+    per.plot()
     
 
 

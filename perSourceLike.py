@@ -96,13 +96,15 @@ class perSourceLike(PluginPrototype):
 
     def fit(self, minimizer = 'minuit', verbose = False):
 
-        print('Fitting ... ')  
+        print('Fitting ... ' )
         
         self._joint_like = JointLikelihood(self._likelihood_model,self._data_list,verbose=verbose)
 
         self._joint_like.set_minimizer(minimizer)
+        
+        self._joint_like.fit()
 
-        return self._joint_like.fit()
+        return self._joint_like
 
 
     def plot( flux_unit = 'erg2/(cm2 s keV)', fit_cmap = 'viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1), energy_unit = 'MeV', ene_min = 65, ene_max = 100000 ):
