@@ -101,7 +101,7 @@ def get_lat_like(t0, t1, ft2File, TRIGGER_ID,fermi_dir='.'):
     eventFile = glob.glob(directory + "/*bn%s_*_filt.fit" % TRIGGER_ID)[0]
     expomap = glob.glob(directory + "/*bn%s_*_filt_expomap.fit" % TRIGGER_ID)[0] 
     ltcube = glob.glob(directory + "/*bn%s_*_filt_ltcube.fit" % TRIGGER_ID)[0] 
-    return FermiLATLike("bn%s"%TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap)
+    return FermiLATLike("bn%s"%TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap, source_name = 'bn%s'%TRIGGER_ID)
 
 # -------------------------------------------------------------- #
 # Spectral functions

@@ -16,6 +16,8 @@ from threeML.utils.statistics.likelihood_functions import (
 )
 from threeML.exceptions.custom_exceptions import custom_warnings
 
+from threeML import *
+
 __instrument_name = "n.a."
 
 
@@ -88,10 +90,14 @@ class perSourceLike(PluginPrototype):
 
     def set_model(self, model):
 
+        for i in self._data_list.values():
+            i.set_model(model)
+        #obsolete method
+        """
         #assign individual point sources in the model for the data set (uses modified FermiLatLike)
         for i,j in zip(self._data_list.values(), self._source_names): 
             i.set_model(model,j)
-
+        """
 
 
     def fit(self, minimizer = 'minuit', verbose = False):
@@ -107,9 +113,9 @@ class perSourceLike(PluginPrototype):
         return self._joint_like
 
 
-    def plot( flux_unit = 'erg2/(cm2 s keV)', fit_cmap = 'viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1), energy_unit = 'MeV', ene_min = 65, ene_max = 100000 ):
+    def plot(self, flux_unit = 'erg2/(cm2 s keV)', fit_cmap = 'viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1), energy_unit = 'MeV', ene_min = 65, ene_max = 100000 ):
 
-        return JointLikelihood.plot_spectra(self._joint_like.results, flux_unit, fit_cmap, contour_cmap, contour_style_kwargs, energy_unit, ene_min, ene_max)
+        return plot_spectra(self._joint_like.results, flux_unit, fit_cmap, contour_cmap, contour_style_kwargs, energy_unit, ene_min, ene_max)
 
 
 
