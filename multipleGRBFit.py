@@ -30,8 +30,12 @@ import astropy.units as u
 import warnings
 warnings.filterwarnings("ignore")
 
+#import local modifications to threeML
+if (True):
+    import sys
+    sys.path.insert(0,'threeML_repo')
+    from perSourceLike import *
 from threeML import *
-import joint_likelihood_adapted as jla
 
 
 owd = os.path.abspath(os.curdir)
@@ -43,7 +47,7 @@ def doLAT(OUTFILE,RA,DEC,TSTARTS,TSTOPS,ROI=8.0,ZMAX=100,EMIN=100,EMAX=100000,IR
     This is a simple wrapper of the doTimeResolvedLike of gtburst
     TSTARTS,TSTOPS can be arrays if you want to run multiple intervals
     '''
-    analysis_dir = 'analysis_%s-%s' % (EMIN,EMAX)
+    analysis_dir = '%s_analysis_%s-%s' % (OUTFILE,EMIN,EMAX)
     os.system('mkdir -p %s' % analysis_dir)
     os.chdir(analysis_dir)
     exe='$CONDA_PREFIX/lib/python2.7/site-packages/fermitools/GtBurst/scripts/doTimeResolvedLike.py'
@@ -93,10 +97,11 @@ def get_lat_like(t0, t1, ft2File, TRIGGER_ID,fermi_dir='.'):
     print(directory)
     print(os.path.abspath(directory))
 
-    eventFile = glob.glob("%s/*_filt.fit" % directory)[0]
-    expomap = glob.glob("%s/*_filt_expomap.fit" % directory)[0] 
-    ltcube = glob.glob("%s/*_filt_ltcube.fit" % directory)[0] 
-    return FermiLATLike("LAT_%s"%TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap)
+    
+    eventFile = glob.glob(directory + "/*bn%s_*_filt.fit" % TRIGGER_ID)[0]
+    expomap = glob.glob(directory + "/*bn%s_*_filt_expomap.fit" % TRIGGER_ID)[0] 
+    ltcube = glob.glob(directory + "/*bn%s_*_filt_ltcube.fit" % TRIGGER_ID)[0] 
+    return FermiLATLike("bn%s"%TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap, source_name = 'bn%s'%TRIGGER_ID)
 
 # -------------------------------------------------------------- #
 # Spectral functions
@@ -112,10 +117,13 @@ def setup_powerlaw_model(src_name,index,RA,DEC,REDSHIFT=0):    #default if REDSH
         powerlaw.index.free = False
 
         ebl = EBLattenuation()
-        ebl.b = Uniform_prior(lower_bound=0,upper_bound=10.0)
-        ebl.set_ebl_model('dominguez')
-        spectrumEBL = powerlaw * ebl*ebl.b #ebl.b = C = e**b
+
+        ebl.set_ebl_model('kneiske')
+        ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=2.0)
+        
+        spectrumEBL = powerlaw * ebl
         spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
+        
         source = PointSource(src_name, RA, DEC, spectral_shape=spectrumEBL)
         
     else:
@@ -172,7 +180,7 @@ if __name__ == "__main__":
     lat_plugin = []
 
 
-    GBM_DATA_PATH = './GroupBayesianFit'
+    GBM_DATA_PATH = './multipleGRBFit'
     os.system('mkdir -p %s' % GBM_DATA_PATH)
     os.chdir(GBM_DATA_PATH)
 
@@ -186,7 +194,6 @@ if __name__ == "__main__":
 
 
 
-    ########
     for i in range(0,len(args.grbs)): 
         print("####################################")
         print("retrieving information for %s"%args.grbs[i])
@@ -213,12 +220,27 @@ if __name__ == "__main__":
 
         #get powerlaws for each source
         sources.append(setup_powerlaw_model('bn'+TRIGGER_ID[i],-2.0,RA[i],DEC[i],REDSHIFT = REDSHIFT[i]))
-    #########
+
+
+    #testing with perSourceLike
+    model = Model(*sources)
+    model.display(complete=True)
+    
+    plugin = DataList(*lat_plugin)
+    
+    source_names=[]
+    for i in TRIGGER_ID:
+        source_names.append('bn%s'%i)
+    
+    per = perSourceLike( 'combinedSourceLikelihood', model, plugin, source_names = source_names, quiet = False )
+    per.fit()
+    per.plot()
+    
 
 
 
-
-    #collate all sources into a single model
+    #collate all sources into a single model\
+    """
     print('Collating models ...')
     model = Model(*sources)
     models = [Model(sources[0]),Model(sources[1])]
@@ -227,7 +249,7 @@ if __name__ == "__main__":
         model[i].link(models.bn080916009.spectrum.main.composite.upper_bound_3,models.bn090102122.spectrum.main.composite.upper_bound_3)
     model.display(complete=True)
     plugin = DataList(*lat_plugin)
-
+    
     #
 
     #perform analysis on group of sources
@@ -235,14 +257,15 @@ if __name__ == "__main__":
     jl = jla.JointLikelihood(model,plugin)
     jl.fit()
     jl.results()
-
-    plt.grid(True)
-    plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
-
+    """ 
 
     #  display_spectrum_model_counts(bayes, min_rate=20)
-    plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', fit_cmap='viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1),energy_unit='MeV',
-                 ene_min=emin, ene_max=emax)
+    #plot_spectra(jl.results, flux_unit='erg2/(cm2 s keV)', fit_cmap='viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1),energy_unit='MeV', ene_min=emin, ene_max=emax)
+
+
+    #Plot settings
+    plt.grid(True)
+    plt.ylabel(r"Flux (erg$^{2}$ cm$^{-2}$ s$^{-1}$ TeV$^{-1}$)")
 
     if savePlots == True:
         plt.savefig('%s_%s'%(TRIGGER_ID,i)+'.png')
