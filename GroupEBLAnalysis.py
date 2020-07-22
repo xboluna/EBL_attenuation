@@ -36,7 +36,9 @@ class GroupEBLAnalysis:
         self.emin,self.emax = 65,100000 #MeV
         
         self.tstart = 0.0
-        #tstop is pulled from catalog (TL100) and passed to doLat 
+        #tstop is pulled from catalog (TL100) and passed to doLat
+
+        self.set_attenuation_model()
 
         #Begin working on model
         self.populate_model()
@@ -47,6 +49,21 @@ class GroupEBLAnalysis:
     @property
     def get_fit_results(self): 
         return self.JOINT_FIT._analysis_results.get_data_frame() #.iloc[1,0]
+
+    def set_attenuation_model(self, model='kneiske'):
+        self.attenuation_model = model
+
+    def update_attenuation_model(self):
+        for i in range(len(self.DATA['GRBNAME'])):
+            name = self.DATA.iloc[i]['GRBNAME']
+            ra = self.DATA.iloc[i]['RA']
+            dec = self.DATA.iloc[i]['DEC']
+            rs = self.DATA.iloc[i]['REDSHIFT']
+
+            self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, -2.0, ra, dec, REDSHIFT = rs)
+
+        self.MODEL = Model(*self.DATA['source_model'].tolist())
+        self.MODEL.display()
 
 
     def populate_model(self):
@@ -148,7 +165,7 @@ class GroupEBLAnalysis:
 
             ebl = EBLattenuation()
 
-            ebl.set_ebl_model('kneiske')
+            ebl.set_ebl_model(self.attenuation_model)
             ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=2.0)
             
             spectrumEBL = powerlaw * ebl
