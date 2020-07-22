@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 #import local modifications to threeML
 if (True):
     import sys
-    sys.path.insert(0,'threeML_repo')
+    sys.path.insert(0,'../threeML_repo')
     from perSourceLike import *
 from threeML import *
 
