@@ -34,9 +34,6 @@ class GroupEBLAnalysis:
         self.LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData')
         
         self.emin,self.emax = 65,100000 #MeV
-        
-        self.tstart = 0.0
-        #tstop is pulled from catalog (TL100) and passed to doLat
 
         self.set_attenuation_model()
 
@@ -78,14 +75,15 @@ class GroupEBLAnalysis:
             dec = self.DATA.iloc[i]['DEC']
             rs = self.DATA.iloc[i]['REDSHIFT']
             #Time interval called from TL100 estimated emission duration 
-            tstop = self.DATA.iloc[i]['TL100']
+            tstart = self.DATA.iloc[i]['TL0']
+            tstop = self.DATA.iloc[i]['TL1']
 
             FT2 = self.LAT_DATA_PATH + '/%s/gll_ft2_tr_%s_v00.fit'%(name,name)
             
-            self.DATA.at[self.DATA['GRBNAME'] == name,'doLAT'] = self.doLAT('%s' % name, ra, dec, [self.tstart], [tstop], data_path=self.LAT_DATA_PATH)
+            self.DATA.at[self.DATA['GRBNAME'] == name,'doLAT'] = self.doLAT('%s' % name, ra, dec, [tstart], [tstop], data_path=self.LAT_DATA_PATH)
  
             
-            self.DATA.at[self.DATA['GRBNAME'] == name,'lat_plugin'] = self.get_lat_like(self.tstart,tstop,FT2,name)
+            self.DATA.at[self.DATA['GRBNAME'] == name,'lat_plugin'] = self.get_lat_like(tstart,tstop,FT2,name)
             self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, -2.0, ra, dec, REDSHIFT = rs)
 
         self.MODEL = Model(*self.DATA['source_model'].tolist())
@@ -104,6 +102,13 @@ class GroupEBLAnalysis:
 
         print('Models created and linked for LAT plugins')
 
+    def get_source_model(self,name,index,ra,dec,rs):
+
+        #Create two fitted powerlaws + a fitted spectrumEBL
+        #Pwl1 : self.emin - self.emax/10
+        #Pwl2 : full range
+        #sEBL : draw pivot from Pwl2
+
 
 
     def fit(self, minimizer = 'minuit', verbose = False):
@@ -111,6 +116,10 @@ class GroupEBLAnalysis:
         self.link_parameters()
 
         self.JOINT_FIT = JointLikelihood(self.MODEL,self.DATALIST,verbose=verbose)
+
+        for i in self.DATA['GRBNAME'].tolist():
+            getattr(self.MODEL,'%s_GalacticTemplate_Value'%i).free = False
+
         self.JOINT_FIT.set_minimizer(minimizer)
         self.JOINT_FIT.fit()
 
@@ -139,7 +148,7 @@ class GroupEBLAnalysis:
 
     def plot(self, flux_unit = 'erg2/(cm2 s keV)', fit_cmap = 'viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1), energy_unit = 'MeV', ene_min = 65, ene_max = 100000 ):
 
-        return plot_spectra(self.JOINT_FIT.results, flux_unit, fit_cmap, contour_cmap, contour_style_kwargs, energy_unit, self.emin, self.emax)
+        return plot_spectra(self.JOINT_FIT.results, flux_unit=flux_unit, fit_cmap=fit_cmap, contour_cmap=contour_cmap, contour_style_kwargs=contour_style_kwargs, energy_unit=energy_unit, ene_min=self.emin, ene_max=self.emax)
 
 
     #helper fcns brought from multGRBfit
@@ -246,7 +255,7 @@ class GroupEBLAnalysis:
             assert int(i) in self._catalog['GRBNAME'].tolist(), ('GRB %s not found in catalog'%i)
             pick = self._catalog[ self._catalog['GRBNAME'] == int(i) ]
             pick['GRBNAME'] = 'bn%s'%i
-            data.append(pick[['GRBNAME', 'RA', 'DEC', 'REDSHIFT','TL100']])
+            data.append(pick[['GRBNAME', 'RA', 'DEC', 'REDSHIFT','TL0','TL1']])
             
 
         self.DATA = pd.concat(data)
