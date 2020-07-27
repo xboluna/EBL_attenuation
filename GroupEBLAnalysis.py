@@ -79,12 +79,15 @@ class GroupEBLAnalysis:
             tstop = self.DATA.iloc[i]['TL1']
 
             FT2 = self.LAT_DATA_PATH + '/%s/gll_ft2_tr_%s_v00.fit'%(name,name)
-            
+
+            index = self.do_unattenuated_fit(name,ra,dec,tstart,tstop,FT2)
+            self.DATA.at[self.DATA['GRBNAME'] == name, 'prelim_index'] = index
+
             self.DATA.at[self.DATA['GRBNAME'] == name,'doLAT'] = self.doLAT('%s' % name, ra, dec, [tstart], [tstop], data_path=self.LAT_DATA_PATH)
  
             
             self.DATA.at[self.DATA['GRBNAME'] == name,'lat_plugin'] = self.get_lat_like(tstart,tstop,FT2,name)
-            self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, -2.0, ra, dec, REDSHIFT = rs)
+            self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, index, ra, dec, REDSHIFT = rs)
 
         self.MODEL = Model(*self.DATA['source_model'].tolist())
         self.MODEL.display(complete=True)
@@ -102,12 +105,37 @@ class GroupEBLAnalysis:
 
         print('Models created and linked for LAT plugins')
 
-    def get_source_model(self,name,index,ra,dec,rs):
+    def do_unattenuated_fit(self,name,ra,dec,tstart,tstop,ft2):
 
         #Create two fitted powerlaws + a fitted spectrumEBL
         #Pwl1 : self.emin - self.emax/10
         #Pwl2 : full range
         #sEBL : draw pivot from Pwl2
+
+        fits=[]
+
+        #First fit:
+        emin,emax = self.emin, self.emax/10
+
+        doLAT = self.doLAT('%s'%name,ra,dec,[tstart],[tstop],data_path=self.LAT_DATA_PATH,EMIN=emin,EMAX=emax)
+        lat_plugin = DataList(self.get_lat_like(tstart,tstop,ft2,name))
+        powerlaw = Model(self.setup_powerlaw_model('%s'%name,-2.0,ra,dec))
+
+        fits.append(JointLikelihood(powerlaw, lat_plugin))
+
+        
+        #Second fit:
+        emin,emax = self.emin,self.emax
+
+        doLAT = self.doLAT('%s'%name,ra,dec,[tstart],[tstop],data_path=self.LAT_DATA_PATH,EMIN=emin,EMAX=emax)
+        lat_plugin = DataList(self.get_lat_like(tstart,tstop,ft2,name))
+        powerlaw = Model(self.setup_powerlaw_model('%s'%name,-2.0,ra,dec))
+
+        fits.append(JointLikelihood(powerlaw, lat_plugin))
+        
+        index = getattr(fits[0].likelihood_model,'%s'%name).spectrum.main.Powerlaw.index.value
+
+        return index
 
 
 
@@ -121,7 +149,7 @@ class GroupEBLAnalysis:
             getattr(self.MODEL,'%s_GalacticTemplate_Value'%i).free = False
 
         self.JOINT_FIT.set_minimizer(minimizer)
-        self.JOINT_FIT.fit()
+        self.JOINT_FIT.fit() 
 
         return self.JOINT_FIT
 
@@ -160,7 +188,7 @@ class GroupEBLAnalysis:
 
         eventFile = glob.glob(directory + "/*%s_*_filt.fit" % TRIGGER_ID)[0]
         expomap = glob.glob(directory + "/*%s_*_filt_expomap.fit" % TRIGGER_ID)[0] 
-        ltcube = glob.glob(directory + "/*%s_*_filt_ltcube.fit" % TRIGGER_ID)[0] 
+        ltcube = glob.glob(directory + "/*%s_*_filt_ltcube.fit" % TRIGGER_ID)[0]
         return FermiLATLike(TRIGGER_ID, eventFile, ft2File, ltcube, 'unbinned', expomap, source_name = TRIGGER_ID)
 
     def setup_powerlaw_model(self,src_name,index,RA,DEC,REDSHIFT=0):
