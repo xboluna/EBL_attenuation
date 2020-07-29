@@ -17,10 +17,10 @@ names = df['GRBNAME'].tolist()
 
 x = GroupEBLAnalysis(names[0:12],csv_path = path)
 x.do_fit()
-
+x.save_fit_results()
 
 results = x.get_fit_results
-results.to_csv('results.csv')
+
 #print('fit = %s +- %s'%(results.iloc[2,0],results.iloc[2,3]))
 
 fig = x.plot()
