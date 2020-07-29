@@ -9,16 +9,22 @@ from threeML import *
 
 from GroupEBLAnalysis import *
 
-x = GroupEBLAnalysis(['080916009','090102122','090510016'],csv_path = 'EBL_candidates/selectedGRBs.csv',fit_type='BayesianAnalysis')
-x.fit()
+import pandas as pd
+
+path = 'EBL_candidates/selectedGRBs.csv'
+df = pd.read_csv(path,dtype=str)
+names = df['GRBNAME'].tolist()
+
+x = GroupEBLAnalysis(names[0:12],csv_path = path)
+x.do_fit()
 
 
-results = []
-results.append(x.get_fit_results)
+results = x.get_fit_results
+results.to_csv('results.csv')
 #print('fit = %s +- %s'%(results.iloc[2,0],results.iloc[2,3]))
 
 fig = x.plot()
-fig.savefig('bayes_profile_bn080916009+090510016.png')
+fig.savefig('bayes_profile.png')
 
 """
 for i in ['dominguez','finke','gilmore','franceschini']:
