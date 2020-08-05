@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 
 import pdb
 
+if True:
+    import sys
+    sys.path.insert(0,'threeML_repo')
 from threeML import *
 
 from GroupEBLAnalysis import *
@@ -15,8 +18,9 @@ path = 'EBL_candidates/selectedGRBs.csv'
 df = pd.read_csv(path,dtype=str)
 names = df['GRBNAME'].tolist()
 
-x = GroupEBLAnalysis(names[0:12],csv_path = path)
-x.do_fit()
+x = GroupEBLAnalysis(names[0:2],csv_path = path,fit_type='multinest')
+y = x.DATA['prelim_index']
+x.do_fit(quiet = False)
 x.save_fit_results()
 
 results = x.get_fit_results
@@ -25,6 +29,13 @@ results = x.get_fit_results
 
 fig = x.plot()
 fig.savefig('bayes_profile.png')
+
+pdb.set_trace()
+
+from matplotlib import rc
+rc('text',usetex=False)
+fig = x.FIT.results.corner_plot()
+fig.savefig('corner_plot.png')
 
 """
 for i in ['dominguez','finke','gilmore','franceschini']:
@@ -40,3 +51,5 @@ for i in results:
 """
 
 pdb.set_trace()
+
+x.FIT.print_results()
