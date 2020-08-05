@@ -16,7 +16,7 @@ from threeML import *
 
 
 class GroupEBLAnalysis:
-    def __init__(self, trigger_ids, dataframe=None, csv_path=None, fit_type='BayesianAnalysis',datapath = './multipleGRBfit'):
+    def __init__(self, trigger_ids, dataframe=None, csv_path=None, fit_type='ultranest',datapath = './multipleGRBfit'):
         """
         Requires list of GRB names
         """
@@ -43,7 +43,7 @@ class GroupEBLAnalysis:
 
         self.LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData')
 
-        assert fit_type == 'JointLikelihood' or fit_type == 'BayesianAnalysis',('Fit type parameter supports JointLikelihood and BayesianAnalysis only')
+        assert fit_type == 'JointLikelihood' or fit_type == 'multinest' or fit_type == 'ultranest',('Fit type parameter supports JointLikelihood and BayesianAnalysis only')
         self.fit_type = fit_type
         
         self.emin,self.emax = 65,100000 #MeV
@@ -79,37 +79,34 @@ class GroupEBLAnalysis:
 
     def populate_model(self):
         
-        failed_sources = []
+        self.failed_sources = []
 
         for i in range(len(self.DATA['GRBNAME'])):
             
             name = self.DATA.iloc[i]['GRBNAME']
+            ra = self.DATA.iloc[i]['RA']
+            dec = self.DATA.iloc[i]['DEC']
+            rs = self.DATA.iloc[i]['REDSHIFT']
+            #Time interval called from TL100 estimated emission duration 
+            tstart = self.DATA.iloc[i]['TL0']
+            tstop = self.DATA.iloc[i]['TL1']
 
-            try:
-                ra = self.DATA.iloc[i]['RA']
-                dec = self.DATA.iloc[i]['DEC']
-                rs = self.DATA.iloc[i]['REDSHIFT']
-                #Time interval called from TL100 estimated emission duration 
-                tstart = self.DATA.iloc[i]['TL0']
-                tstop = self.DATA.iloc[i]['TL1']
-
-                FT2 = self.LAT_DATA_PATH + '/%s/gll_ft2_tr_%s_v00.fit'%(name,name)
-
-                index = self.do_unattenuated_fit(name,ra,dec,tstart,tstop,FT2)
-                self.DATA.at[self.DATA['GRBNAME'] == name, 'prelim_index'] = index
-                os.chdir(self.head_directory)
-
-                self.DATA.at[self.DATA['GRBNAME'] == name,'doLAT'] = self.doLAT('%s' % name, ra, dec, [tstart], [tstop], data_path=self.LAT_DATA_PATH)
-     
+            FT2 = self.LAT_DATA_PATH + '/%s/gll_ft2_tr_%s_v00.fit'%(name,name)
                 
-                self.DATA.at[self.DATA['GRBNAME'] == name,'lat_plugin'] = self.get_lat_like(tstart,tstop,FT2,name)
-                self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, index, ra, dec, REDSHIFT = rs)
-                os.chdir(self.head_directory)
-            except:
-                print('%s removed from model to preserve execution'%name)
-                failed_sources.append(name)
+            index = self.do_unattenuated_fit(name,ra,dec,tstart,tstop,FT2)
+            if index is None:
+                continue
+            self.DATA.at[self.DATA['GRBNAME'] == name, 'prelim_index'] = index
+            os.chdir(self.head_directory)
 
-        for i in failed_sources:
+            self.DATA.at[self.DATA['GRBNAME'] == name,'doLAT'] = self.doLAT('%s' % name, ra, dec, [tstart], [tstop], data_path=self.LAT_DATA_PATH) 
+
+            self.DATA.at[self.DATA['GRBNAME'] == name,'lat_plugin'] = self.get_lat_like(tstart,tstop,FT2,name)
+
+            self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, index, ra, dec, REDSHIFT = rs)
+            os.chdir(self.head_directory)
+
+        for i in self.failed_sources:
             self.DATA = self.DATA[self.DATA['GRBNAME'] != i]
 
         self.MODEL = Model(*self.DATA['source_model'].tolist())
@@ -128,6 +125,7 @@ class GroupEBLAnalysis:
 
         print('Models created and linked for LAT plugins')
         print('Successfully executed on sources: ' + ', '.join(self.DATA['GRBNAME'].tolist()))
+        print('Excluded sources : ' + ', '.join(self.failed_sources))
 
     def do_unattenuated_fit(self,name,ra,dec,tstart,tstop,ft2,keep_fits = False):
 
@@ -136,62 +134,51 @@ class GroupEBLAnalysis:
         #Pwl2 : full range
         #sEBL : draw pivot from Pwl2
 
-        fits=[]
-
         #First fit:
-        emin,emax = self.emin, self.emax/10
+        emin,emax = self.emin, self.emax/100
 
         doLAT = self.doLAT('%s'%name,ra,dec,[tstart],[tstop],data_path=self.LAT_DATA_PATH,EMIN=emin,EMAX=emax)
-        lat_plugin = DataList(self.get_lat_like(tstart,tstop,ft2,name))
+        try:
+             lat_plugin = DataList(self.get_lat_like(tstart,tstop,ft2,name))
+        except:
+                self.failed_sources.append(name)
+                print('%s removed from fit to preserve execution' %name)
+                return None
         powerlaw = Model(self.setup_powerlaw_model('%s'%name,-2.0,ra,dec))
 
         if self.fit_type == 'JointLikelihood':
-            fits.append(JointLikelihood(powerlaw, lat_plugin))
-            fits[0].fit()
-        else:
+            fit = JointLikelihood(powerlaw, lat_plugin)
+            fit.fit()
+        elif self.fit_type == 'multinest':
             bayes = BayesianAnalysis(powerlaw,lat_plugin) 
             getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).set_uninformative_prior(Uniform_prior) 
             getattr(bayes.likelihood_model,'%s_IsotropicTemplate_Normalization'%name).set_uninformative_prior(Uniform_prior)
             bayes.set_sampler("multinest")
             bayes.sampler.setup(n_live_points=400)
-            bayes.sample()
+            bayes.sample(quiet = True)
             bayes.restore_median_fit()
             bayes.results.corner_plot()
-            fits.append(bayes)
+            fit = bayes
+        else: #is ultranest
+            bayes = BayesianAnalysis(powerlaw,lat_plugin) 
+            getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).set_uninformative_prior(Uniform_prior) 
+            getattr(bayes.likelihood_model,'%s_IsotropicTemplate_Normalization'%name).set_uninformative_prior(Uniform_prior)
+            bayes.set_sampler("ultranest")
+            bayes.sampler.setup()
+            bayes.sample(quiet = True) 
+            fit = bayes
 
         
-        #Second fit:
-        emin,emax = self.emin,self.emax
-
-        doLAT = self.doLAT('%s'%name,ra,dec,[tstart],[tstop],data_path=self.LAT_DATA_PATH,EMIN=emin,EMAX=emax)
-        lat_plugin = DataList(self.get_lat_like(tstart,tstop,ft2,name))
-        powerlaw = Model(self.setup_powerlaw_model('%s'%name,-2.0,ra,dec))
-
-        if self.fit_type == 'JointLikelihood':
-            fits.append(JointLikelihood(powerlaw, lat_plugin))
-            fits[1].fit()
-        else:
-            bayes = BayesianAnalysis(powerlaw,lat_plugin) 
-            getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).set_uninformative_prior(Uniform_prior) 
-            getattr(bayes.likelihood_model,'%s_IsotropicTemplate_Normalization'%name).set_uninformative_prior(Uniform_prior)
-            bayes.set_sampler("multinest")
-            bayes.sampler.setup(n_live_points=400)
-            bayes.sample()
-            bayes.restore_median_fit()
-            bayes.results.corner_plot()
-            fits.append(bayes)
-
         if keep_fits is True:
-            self.DATA.at[self.DATA['GRBNAME'] == name,'unattenuated_fit_1'] = fits[0]
-            self.DATA.at[self.DATA['GRBNAME'] == name,'unattenuated_fit_2'] = fits[1]
-
-        index = fits[0].results.get_data_frame().iloc[1,0]
+            self.DATA.at[self.DATA['GRBNAME'] == name,'powerlaw_%s_%s'%(emin,emax)] = fit
+ 
+        index = fit.results.get_data_frame().iloc[1,0]
         
         return index
 
 
 
-    def do_fit(self, minimizer = 'minuit', verbose = False):
+    def do_fit(self, minimizer = 'minuit', verbose = False,quiet=True):
 
         self.link_parameters()
 
@@ -207,9 +194,7 @@ class GroupEBLAnalysis:
             self.FIT.set_minimizer(minimizer)
             self.FIT.fit()
 
-            return self.FIT
-
-        else:
+        elif self.fit_type == 'multinest':
 
             bayes = BayesianAnalysis(self.MODEL,self.DATALIST)
             for name in self.DATA['GRBNAME'].tolist():
@@ -217,13 +202,27 @@ class GroupEBLAnalysis:
                 getattr(bayes.likelihood_model,'%s_IsotropicTemplate_Normalization'%name).set_uninformative_prior(Uniform_prior)
             bayes.set_sampler("multinest")
             bayes.sampler.setup(n_live_points=400)
-            bayes.sample()
+            bayes.sample(quiet = quiet)
             bayes.restore_median_fit()
             bayes.results.corner_plot() 
 
             self.FIT = bayes
 
-            return self.FIT
+        else:
+            bayes = BayesianAnalysis(self.MODEL,self.DATALIST)
+            for name in self.DATA['GRBNAME'].tolist():
+                getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).set_uninformative_prior(Uniform_prior) 
+                getattr(bayes.likelihood_model,'%s_IsotropicTemplate_Normalization'%name).set_uninformative_prior(Uniform_prior)
+            bayes.set_sampler("ultranest")
+            bayes.sampler.setup()
+            bayes.sample(quiet = quiet) 
+            fit = bayes
+
+            self.FIT = bayes
+        
+        print('Sources fitted: %s'%(', '.join(self.DATA['GRBNAME'].tolist())))
+        print('Sources excluded from fit: %s'%(', '.join(self.failed_sources)))
+        return self.FIT
 
     
     def save_populated_model(self, directory = 'model'):
@@ -237,24 +236,15 @@ class GroupEBLAnalysis:
 
 
     #param type in following two functions not yet implemented
-    def link_parameters(self,param = 'fit'):
+    def link_parameters(self,param = 'attenuation'):
 
         source_names = self.DATA['GRBNAME'].tolist()
 
         for i in range(len(source_names)-1):
-            param_1 = getattr(self.MODEL,source_names[i]).spectrum.main.composite.fit_2
-            param_2 = getattr(self.MODEL,source_names[i+1]).spectrum.main.composite.fit_2
+            param_1 = getattr(self.MODEL,source_names[i]).spectrum.main.composite.attenuation_2
+            param_2 = getattr(self.MODEL,source_names[i+1]).spectrum.main.composite.attenuation_2
             self.MODEL.link(param_1,param_2)
-        
-    def plot_param_profile(self, source_name,param = 'fit',steps=100,xmin=0,xmax=2):
-        
-        #---> is it possible to plot the contour of a linked parameter?
-        a,b,cc,fig = self.JOINT_FIT.get_contours('%s.spectrum.main.composite.fit_2'%source_name, xmin, xmax,steps,param_2=None)
-        
-        result = self.JOINT_FIT._analysis_results.get_data_frame().iloc[1,0]
-        fig.suptitle('fit = %s'%result)
-        
-        return fig
+
 
     def plot(self, flux_unit = 'erg2/(cm2 s keV)', fit_cmap = 'viridis', contour_cmap = 'viridis', contour_style_kwargs = dict(alpha=0.1), energy_unit = 'MeV', ene_min = 65, ene_max = 100000 ):
 
@@ -286,7 +276,8 @@ class GroupEBLAnalysis:
             ebl = EBLattenuation()
 
             ebl.set_ebl_model(self.attenuation_model)
-            ebl.fit.prior = Uniform_prior(lower_bound = 0.0, upper_bound=2.0)
+            ebl.attenuation.prior = Uniform_prior(lower_bound = 0.0, upper_bound=2.0)
+            ebl.attenuation.fix = False
             
             spectrumEBL = powerlaw * ebl
             spectrumEBL.redshift_2 = REDSHIFT * u.dimensionless_unscaled
@@ -342,7 +333,9 @@ class GroupEBLAnalysis:
             exe+=' --%s %s' % (k,i)
         exe+=' %s' % triggername
         print(exe)
+
         os.system(exe)
+    
         return analysis_dir
 
 
