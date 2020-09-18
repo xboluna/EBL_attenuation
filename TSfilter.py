@@ -1,25 +1,29 @@
-#!/bin/env python
+#!/usr/bin/env python
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-import pdb
-
-if True:
-    import sys
-    sys.path.insert(0,'threeML_repo')
-from threeML import *
 
 from GroupEBLAnalysis import *
 
 import pandas as pd
 
+import os
+
 path = 'EBL_candidates/selectedGRBs.csv'
 df = pd.read_csv(path,dtype=str)
 names = df['GRBNAME'].tolist()
 
-x = GroupEBLAnalysis(names[0:2],csv_path = path,fit_type='multinest')
+x = GroupEBLAnalysis(['091127976','120624933','130907904','131108862','150514774','171010792','180720598'],csv_path = path,fit_type='JointLikelihood',attenuation_model='kneiske',OUTDIR = os.getcwd()+'/GroupEBLAnalysis_TS_run')
+x.save_TS()
+
+x.populate_model(rollingSave=True)
+
+fig = x.plot_TS()
+fig.savefig('TSvRS.png')
+
+exit()
 y = x.DATA['prelim_index']
 x.do_fit(quiet = False)
 x.save_fit_results()
@@ -30,8 +34,6 @@ results = x.get_fit_results
 
 fig = x.plot()
 fig.savefig('bayes_profile.png')
-
-pdb.set_trace()
 
 from matplotlib import rc
 rc('text',usetex=False)
@@ -50,7 +52,5 @@ for i in ['dominguez','finke','gilmore','franceschini']:
 for i in results:
     print(i)
 """
-
-pdb.set_trace()
 
 x.FIT.print_results()

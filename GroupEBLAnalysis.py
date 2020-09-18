@@ -16,7 +16,7 @@ from threeML import *
 
 
 class GroupEBLAnalysis:
-    def __init__(self, trigger_ids, dataframe=None, csv_path=None, fit_type='ultranest',datapath = './multipleGRBfit'):
+    def __init__(self, trigger_ids, dataframe=None, csv_path=None, fit_type='ultranest',datapath = './multipleGRBfit', attenuation_model='kneiske', OUTDIR=None):
         """
         Requires list of GRB names
         """
@@ -33,13 +33,17 @@ class GroupEBLAnalysis:
         #Setting grouped properties
         self.set_names( trigger_ids )
 
-        if len(self.DATA['GRBNAME'].tolist()) < 5:
-            self.head_directory = os.getcwd()+'/GroupEBLAnalysis_%s'%'_'.join(self.DATA['GRBNAME'].tolist())
-        else:
-            self.head_directory = os.getcwd()+'/GroupEBLAnalysis'
-            self.DATA['GRBNAME'].to_csv('source_names.csv')
-        os.system('mkdir -p %s' % self.head_directory)
-        os.chdir(self.head_directory)
+
+	if OUTDIR is not None:
+		self.head_directory = OUTDIR
+	else:
+		if len(self.DATA['GRBNAME'].tolist()) < 5:
+			self.head_directory = os.getcwd()+'/GroupEBLAnalysis_%s'%'_'.join(self.DATA['GRBNAME'].tolist())
+		else:
+			self.head_directory = os.getcwd()+'/GroupEBLAnalysis'
+	os.system('mkdir -p %s' % self.head_directory)
+	os.chdir(self.head_directory)
+	self.DATA['GRBNAME'].to_csv('source_names.csv')
 
         self.LAT_DATA_PATH = os.path.expandvars('${HOME}/FermiData')
 
@@ -47,19 +51,21 @@ class GroupEBLAnalysis:
         self.fit_type = fit_type
         
         self.emin,self.emax = 65,100000 #MeV
+        
+        self.saveTS = False
 
-        self.set_attenuation_model()
+        self.set_attenuation_model(attenuation_model)
         
-        #Begin working on model
-        self.populate_model()
-        
-        #expect .fit() and .plot() to be called separately
+        #expect .populate_model(), then.fit() and .plot() to be called separately
         
 
     @property
     def get_fit_results(self):
         self.FIT.results.get_data_frame()
-        
+    
+    def save_TS(self, b=True):
+        assert (self.fit_type == 'JointLikelihood'), 'Computation of test statistic only available for JointLikelihood fit type.'
+        self.saveTS = b
 
     def set_attenuation_model(self, model='kneiske'):
         self.attenuation_model = model
@@ -77,7 +83,7 @@ class GroupEBLAnalysis:
         self.MODEL.display()
 
 
-    def populate_model(self):
+    def populate_model(self, rollingSave = False):
         
         self.failed_sources = []
 
@@ -92,10 +98,14 @@ class GroupEBLAnalysis:
             tstop = self.DATA.iloc[i]['TL1']
 
             FT2 = self.LAT_DATA_PATH + '/%s/gll_ft2_tr_%s_v00.fit'%(name,name)
-                
+             
             index = self.do_unattenuated_fit(name,ra,dec,tstart,tstop,FT2)
+
+            
             if index is None:
+                import pdb;pdb.set_trace()
                 continue
+
             self.DATA.at[self.DATA['GRBNAME'] == name, 'prelim_index'] = index
             os.chdir(self.head_directory)
 
@@ -104,11 +114,15 @@ class GroupEBLAnalysis:
             self.DATA.at[self.DATA['GRBNAME'] == name,'lat_plugin'] = self.get_lat_like(tstart,tstop,FT2,name)
 
             self.DATA.at[self.DATA['GRBNAME'] == name,'source_model'] = self.setup_powerlaw_model('%s'%name, index, ra, dec, REDSHIFT = rs)
+            
             os.chdir(self.head_directory)
+
+            if rollingSave is True:
+                self.DATA.to_csv('DATA.csv')
 
         for i in self.failed_sources:
             self.DATA = self.DATA[self.DATA['GRBNAME'] != i]
-
+        
         self.MODEL = Model(*self.DATA['source_model'].tolist())
         self.MODEL.display(complete=True)
 
@@ -127,6 +141,7 @@ class GroupEBLAnalysis:
         print('Successfully executed on sources: ' + ', '.join(self.DATA['GRBNAME'].tolist()))
         print('Excluded sources : ' + ', '.join(self.failed_sources))
 
+
     def do_unattenuated_fit(self,name,ra,dec,tstart,tstop,ft2,keep_fits = False):
 
         #Create two fitted powerlaws + a fitted spectrumEBL
@@ -139,16 +154,29 @@ class GroupEBLAnalysis:
 
         doLAT = self.doLAT('%s'%name,ra,dec,[tstart],[tstop],data_path=self.LAT_DATA_PATH,EMIN=emin,EMAX=emax)
         try:
-             lat_plugin = DataList(self.get_lat_like(tstart,tstop,ft2,name))
+             lat = self.get_lat_like(tstart,tstop,ft2,name)
+             lat_plugin = DataList(lat)
         except:
                 self.failed_sources.append(name)
                 print('%s removed from fit to preserve execution' %name)
                 return None
         powerlaw = Model(self.setup_powerlaw_model('%s'%name,-2.0,ra,dec))
-
+        
         if self.fit_type == 'JointLikelihood':
             fit = JointLikelihood(powerlaw, lat_plugin)
-            fit.fit()
+            try:
+                a, b = fit.fit()
+                if self.saveTS is True:
+                    #Clear source name for compute_TS
+                    lat.clear_source_name()
+                    fit._data_list = DataList(lat)
+                    fit._assign_model_to_data(fit._likelihood_model)
+                    TS = fit.compute_TS(source_name=name, alt_hyp_mlike_df = b)
+                    print("Computed test statistics for %s"%name)
+                    print(TS)
+                    self.DATA.at[self.DATA['GRBNAME'] == name, 'TS'] = TS['TS'][0]
+            except:
+                return None
         elif self.fit_type == 'multinest':
             bayes = BayesianAnalysis(powerlaw,lat_plugin) 
             getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).set_uninformative_prior(Uniform_prior) 
@@ -171,12 +199,34 @@ class GroupEBLAnalysis:
         
         if keep_fits is True:
             self.DATA.at[self.DATA['GRBNAME'] == name,'powerlaw_%s_%s'%(emin,emax)] = fit
- 
+        
+                
         index = fit.results.get_data_frame().iloc[1,0]
         
         return index
+    
+    
+    def plot_TS(self, TS_line = None, RS_line = None):
+        """
+        Plots joint likelihood test statistic against redshift for all passed sources.
+        """
+        try:
+            df = self.DATA[['GRBNAME','REDSHIFT','TS']]
+        except:
+            raise Exception('Either populate_model() is needed or saveTS was disabled.')
 
+        fig, ax = plt.subplots()
+        ax.scatter(df['REDSHIFT'],df['TS'])
+        ax.set_xlabel('REDSHIFT')
+        ax.set_ylabel('TEST STATISTIC')
 
+        for i, txt in enumerate(df['GRBNAME']):
+            ax.annotate(txt, (df['REDSHIFT'][i] , df['TS'][i] ) )
+
+        ax.plot([RS_line,RS_line],[min(df['TS']),max(df['TS'])], label='redshift cut-off', color='r', linestyle='dashed')
+        ax.plot([min(df['REDSHIFT']),max(df['REDSHIFT'])], [TS_line,TS_line], label='test significance cut-off', color='b', linestyle='dashed')
+
+        return fig
 
     def do_fit(self, minimizer = 'minuit', verbose = False,quiet=True):
 
@@ -211,7 +261,8 @@ class GroupEBLAnalysis:
         else:
             bayes = BayesianAnalysis(self.MODEL,self.DATALIST)
             for name in self.DATA['GRBNAME'].tolist():
-                getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).set_uninformative_prior(Uniform_prior) 
+                getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).free = False
+		getattr(bayes.likelihood_model,'%s_GalacticTemplate_Value'%name).value = 1
                 getattr(bayes.likelihood_model,'%s_IsotropicTemplate_Normalization'%name).set_uninformative_prior(Uniform_prior)
             bayes.set_sampler("ultranest")
             bayes.sampler.setup()
@@ -232,8 +283,6 @@ class GroupEBLAnalysis:
 
     def save_fit_results(self, filename = 'fitted_model.fits'):
         self.FIT.results.write_to(filename, overwrite=True)
-
-
 
     #param type in following two functions not yet implemented
     def link_parameters(self,param = 'attenuation'):
